@@ -5,7 +5,7 @@ import "fmt"
 type Register uint16
 
 const (
-	AL Register = iota
+	AL uint16 = iota
 	AX
 	CL
 	CX
@@ -23,7 +23,7 @@ const (
 	DI
 )
 
-var registerStr = map[Register]string{
+var registerStr = map[uint16]string{
 	AL: "al",
 	AX: "ax",
 	CL: "cl",
@@ -61,8 +61,22 @@ const (
 
 // mod field
 const (
-	REG_MODE = 0b11
+	NO_DISP          = 0b00
+	EIGHT_BIT_DISP   = 0b01
+	SIXTEEN_BIT_DISP = 0b10
+	REG_MODE         = 0b11
 )
+
+var effectiveAddrCalc = map[uint16]string{
+	0b000: "bx + si",
+	0b001: "bx + di",
+	0b010: "bp + si",
+	0b011: "bp + di",
+	0b100: "si",
+	0b101: "di",
+	0b110: "bp", // I'm ignoring direct memory access
+	0b111: "bx",
+}
 
 func disassemble(stream []byte) {
 	for i := 0; i < len(stream); {
@@ -78,28 +92,54 @@ func disassemble(stream []byte) {
 			d := bits(firstByte, 1, 1)
 			w := bits(firstByte, 0, 1)
 			mod := bits(secondByte, 6, 2)
-			reg := (bits(secondByte, 3, 3) << 1) | w
-			rm := (bits(secondByte, 0, 3) << 1) | w
+			reg := bits(secondByte, 3, 3)
+			rm := bits(secondByte, 0, 3)
 
-			if mod != REG_MODE {
-				fatalError("Unknown instruction: 0x%x", opcode)
-			}
+			if mod < REG_MODE {
+				addrCalc := effectiveAddrCalc[rm]
+				if mod == EIGHT_BIT_DISP {
+					instrSize += 1
+					addrCalc = fmt.Sprintf("[%s + %d]", addrCalc, uint16(stream[i+2]))
+				} else if mod == SIXTEEN_BIT_DISP {
+					instrSize += 2
+					addrCalc = fmt.Sprintf("[%s + %d]", addrCalc, uint16(stream[i+2])|(uint16(stream[i+3])<<8))
+				} else {
+					addrCalc = fmt.Sprintf("[%s]", addrCalc)
+				}
 
-			var dest, src Register
-			if d == REG_IS_SRC {
-				src = Register(reg)
-				dest = Register(rm)
+				reg = reg<<1 | w
+				var dest, src string
+				if d == REG_IS_SRC {
+					src = registerStr[(reg)]
+					dest = addrCalc
+				} else {
+					src = addrCalc
+					dest = registerStr[reg]
+				}
+
+				fmt.Printf("mov %s, %s\n", dest, src)
+			} else if mod == REG_MODE {
+				var dest, src uint16
+				if d == REG_IS_SRC {
+					src = reg
+					dest = rm
+				} else {
+					src = rm
+					dest = reg
+				}
+
+				src = (src << 1) | w
+				dest = (dest << 1) | w
+				fmt.Printf("mov %s, %s\n", registerStr[dest], registerStr[src])
 			} else {
-				src = Register(rm)
-				dest = Register(reg)
+				fatalError("should not happen..")
 			}
-
-			fmt.Printf("mov %s, %s\n", registerStr[dest], registerStr[src])
 		case matchOp(opcode, IMM_TO_REGMEM):
+			fmt.Println("hi")
 		case matchOp(opcode, IMM_TO_REG):
 			firstByte := uint16(stream[i])
 			wide := bits(firstByte, 3, 1) == 1
-			reg := Register(bits(firstByte, 0, 3) << 1)
+			reg := bits(firstByte, 0, 3) << 1
 			immd := int16(stream[i+1])
 
 			if wide {
