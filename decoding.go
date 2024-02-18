@@ -49,6 +49,8 @@ type Opcode struct {
 
 var (
 	REGMEM_TOFROM_REG = Opcode{mask: 0b1111_1100_0000_0000, opcode: 0b1000_1000_0000_0000}
+	IMM_TO_REGMEM     = Opcode{mask: 0b1111_1110_0011_1000, opcode: 0b1100_0110_0000_0000}
+	IMM_TO_REG        = Opcode{mask: 0b1111_0000_0000_0000, opcode: 0b1011_0000_0000_0000}
 )
 
 // d flag
@@ -93,6 +95,22 @@ func disassemble(stream []byte) {
 			}
 
 			fmt.Printf("mov %s, %s\n", registerStr[dest], registerStr[src])
+		case matchOp(opcode, IMM_TO_REGMEM):
+		case matchOp(opcode, IMM_TO_REG):
+			firstByte := uint16(stream[i])
+			wide := bits(firstByte, 3, 1) == 1
+			reg := Register(bits(firstByte, 0, 3) << 1)
+			immd := int16(stream[i+1])
+
+			if wide {
+				reg |= 1
+				immd = immd | (int16(stream[i+2]) << 8)
+				instrSize++
+			} else {
+				immd = (immd << 8) >> 8 // Trick to extend the sign bit
+			}
+
+			fmt.Printf("mov %s, %v\n", registerStr[reg], immd)
 		default:
 			fatalError("Unknown instruction: 0x%x", opcode)
 		}
