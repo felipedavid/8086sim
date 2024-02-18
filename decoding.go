@@ -51,6 +51,17 @@ var (
 	REGMEM_TOFROM_REG = Opcode{mask: 0b1111_1100_0000_0000, opcode: 0b1000_1000_0000_0000}
 )
 
+// d flag
+const (
+	REG_IS_SRC = 0
+	REG_IS_DST = 1
+)
+
+// mod field
+const (
+	REG_MODE = 0b11
+)
+
 func disassemble(stream []byte) {
 	for i := 0; i < len(stream); {
 		instrSize := 2
@@ -68,17 +79,17 @@ func disassemble(stream []byte) {
 			reg := (bits(secondByte, 3, 3) << 1) | w
 			rm := (bits(secondByte, 0, 3) << 1) | w
 
-			if mod != 0b11 {
+			if mod != REG_MODE {
 				fatalError("Unknown instruction: 0x%x", opcode)
 			}
 
 			var dest, src Register
-			if d == 0 {
-				dest = Register(reg)
-				src = Register(rm)
-			} else {
-				dest = Register(rm)
+			if d == REG_IS_SRC {
 				src = Register(reg)
+				dest = Register(rm)
+			} else {
+				src = Register(rm)
+				dest = Register(reg)
 			}
 
 			fmt.Printf("mov %s, %s\n", registerStr[dest], registerStr[src])
